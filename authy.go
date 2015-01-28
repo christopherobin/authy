@@ -3,17 +3,19 @@
 //
 // Middlewares:
 //
-// * Martini: https://github.com/gophergala/authy/martini
+// * Martini: https://github.com/christopherobin/authy/martini
 //
-// For a full guide visit https://github.com/gophergala/authy
+// For a full guide visit https://github.com/christopherobin/authy
 package authy
 
 import (
 	"errors"
 	"fmt"
-	"github.com/gophergala/authy/oauth2"
-	"github.com/gophergala/authy/provider"
+	"github.com/christopherobin/authy/oauth2"
+	"github.com/christopherobin/authy/provider"
 	"net/http"
+	"strings"
+	"time"
 )
 
 // Authy represents the current configuration and cached provider data
@@ -31,6 +33,43 @@ type Token struct {
 	// The scopes returned by the provider, some providers may allow the user to change the scope of an auth request
 	// Make sure to check the available scopes before doing queries on their webservices
 	Scope []string
+	// Expiry date
+	Expires *time.Time
+}
+
+func (t Token) Expired() bool {
+	if t.Expires == nil {
+		return false
+	}
+	return time.Now().After(*t.Expires)
+}
+
+// quick transport implementation for an oauth client
+type TokenTransport struct {
+	token     Token
+	transport http.RoundTripper
+}
+
+func NewTokenTranport(t Token) *TokenTransport {
+	return &TokenTransport{
+		token:     t,
+		transport: http.DefaultTransport,
+	}
+}
+
+func (tt *TokenTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if !tt.token.Expired() {
+		req.Header["Authorization"] = []string{"Bearer " + tt.token.Value}
+	}
+
+	return tt.transport.RoundTrip(req)
+}
+
+// Return a http.Client to be used to query distant APIs
+func (t Token) Client() *http.Client {
+	return &http.Client{
+		Transport: NewTokenTranport(t),
+	}
 }
 
 // Parse the configuration and build the list of providers, return an Authy instance
@@ -69,6 +108,7 @@ func (a Authy) Authorize(providerName string, session Session, r *http.Request) 
 
 		// save authentication state in session
 		session.Set("authy."+providerName+".state", state)
+		session.Set("authy."+state+".scope", strings.Join(providerConfig.Scope, ","))
 		providerConfig.State = state
 
 		// generate authorisation URL
@@ -103,8 +143,9 @@ func (a Authy) Access(providerName string, session Session, r *http.Request) (To
 		if stateParam != state.(string) {
 			return Token{}, "", errors.New("invalid state param provided, possible CSRF")
 		}
-		// we don't need it anymore
-		session.Delete("authy." + providerName + ".state")
+
+		// retrieve the original scope
+		originalScope := strings.Split(session.Get("authy."+state.(string)+".scope").(string), ",")
 
 		code := r.URL.Query().Get("code")
 		if code == "" {
@@ -117,10 +158,18 @@ func (a Authy) Access(providerName string, session Session, r *http.Request) (To
 			return Token{}, "", err
 		}
 
+		// we don't need session info anymore
+		session.Delete("authy." + providerName + ".state")
+		session.Delete("authy." + state.(string) + ".scope")
+
 		// provide the proper callback URL
 		redirectUrl := a.config.Callback
 		if providerConfig.Callback != "" {
 			redirectUrl = providerConfig.Callback
+		}
+
+		if len(token.Scope) == 0 {
+			token.Scope = originalScope
 		}
 
 		// return the token

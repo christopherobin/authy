@@ -1,7 +1,7 @@
 package authy
 
 import (
-	"github.com/gophergala/authy/provider"
+	"github.com/christopherobin/authy/provider"
 )
 
 // Configuration for authy, is already mapped for being parsed by encoding/json

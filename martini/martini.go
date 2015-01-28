@@ -2,8 +2,8 @@
 package authy
 
 import (
+	"github.com/christopherobin/authy"
 	"github.com/go-martini/martini"
-	"github.com/gophergala/authy"
 	"github.com/martini-contrib/sessions"
 	"net/http"
 	"net/url"
@@ -13,6 +13,10 @@ import (
 
 type Config authy.Config
 type Token authy.Token
+
+func (t Token) Client() *http.Client {
+	return authy.Token(t).Client()
+}
 
 // Takes an Authy config and returns a middleware to use with martini
 // See examples below

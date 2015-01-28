@@ -8,12 +8,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/christopherobin/authy/provider"
 	"github.com/google/go-querystring/query"
-	"github.com/gophergala/authy/provider"
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 )
 
 type authorizationRequest struct {
@@ -36,6 +38,7 @@ type Token struct {
 	AccessToken string
 	Scope       []string
 	Type        string
+	Expires     *time.Time
 }
 
 // standard oauth2 error (http://tools.ietf.org/html/rfc6749#section-5.2)
@@ -139,6 +142,7 @@ func GetAccessToken(config provider.ProviderConfig, r *http.Request) (token Toke
 		return
 	}
 
+	requestTime := time.Now()
 	resp, err := http.PostForm(config.Provider.AccessURL, queryValues)
 	if err != nil {
 		return
@@ -168,11 +172,19 @@ func GetAccessToken(config provider.ProviderConfig, r *http.Request) (token Toke
 	token.AccessToken = values["access_token"][0]
 	token.Type = values["token_type"][0]
 
-	// TODO: maybe store the scope with the state token and set it there if not returned
-	// by the service
 	if scope, ok := values["scope"]; ok == true {
 		token.Scope = strings.Split(scope[0], config.Provider.ScopeDelimiter)
 	}
+
+	if expires_in, ok := values["expires_in"]; ok == true {
+		// silently ignore errors in this case, later we might add a log
+		if to_add, err := strconv.ParseInt(expires_in[0], 10, 32); err != nil {
+			expires := requestTime.Add(time.Duration(to_add) * time.Second)
+			token.Expires = &expires
+		}
+	}
+
+	// TODO: some APIs might send refresh infos, extract and return that info too
 
 	return
 }
