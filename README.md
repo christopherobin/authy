@@ -1,6 +1,8 @@
 Authy
 =====
 
+![Authy temporary logo](https://raw.githubusercontent.com/gophergala/authy/master/logo.png)
+
 Authy is a go library that acts as an oauth authentication middleware for [net/http](http://golang.org/pkg/net/http),
 it aims to provide drop-in support for most OAuth 1 (not implemented yet) and 2 providers. It is inspired from node.js
 libraries such as [grant](https://github.com/simov/grant) or [everyauth](https://github.com/bnoguchi/everyauth).
