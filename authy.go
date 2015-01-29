@@ -58,11 +58,22 @@ func NewTokenTranport(t Token) *TokenTransport {
 }
 
 func (tt *TokenTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// make a copy of the request object (requested by RoundTripper interface)
+	newReq := *req
+
+	// deepcopy headers
+	newReq.Header = make(http.Header)
+	for name, val := range req.Header {
+		valCopy := make([]string, len(val))
+		copy(valCopy, val)
+		newReq.Header[name] = valCopy
+	}
+
 	if !tt.token.Expired() {
 		req.Header["Authorization"] = []string{"Bearer " + tt.token.Value}
 	}
 
-	return tt.transport.RoundTrip(req)
+	return tt.transport.RoundTrip(&newReq)
 }
 
 // Return a http.Client to be used to query distant APIs
