@@ -15,72 +15,12 @@ import (
 	"github.com/christopherobin/authy/provider"
 	"net/http"
 	"strings"
-	"time"
 )
 
 // Authy represents the current configuration and cached provider data
 type Authy struct {
 	config    Config
 	providers map[string]provider.ProviderConfig
-}
-
-// Token is returned on a successful auth
-type Token struct {
-	// The provider on which that token can be used
-	Provider string
-	// The actual value of the token
-	Value string
-	// The scopes returned by the provider, some providers may allow the user to change the scope of an auth request
-	// Make sure to check the available scopes before doing queries on their webservices
-	Scope []string
-	// Expiry date
-	Expires *time.Time
-}
-
-func (t Token) Expired() bool {
-	if t.Expires == nil {
-		return false
-	}
-	return time.Now().After(*t.Expires)
-}
-
-// quick transport implementation for an oauth client
-type TokenTransport struct {
-	token     Token
-	transport http.RoundTripper
-}
-
-func NewTokenTranport(t Token) *TokenTransport {
-	return &TokenTransport{
-		token:     t,
-		transport: http.DefaultTransport,
-	}
-}
-
-func (tt *TokenTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	// make a copy of the request object (requested by RoundTripper interface)
-	newReq := *req
-
-	// deepcopy headers
-	newReq.Header = make(http.Header)
-	for name, val := range req.Header {
-		valCopy := make([]string, len(val))
-		copy(valCopy, val)
-		newReq.Header[name] = valCopy
-	}
-
-	if !tt.token.Expired() {
-		req.Header["Authorization"] = []string{"Bearer " + tt.token.Value}
-	}
-
-	return tt.transport.RoundTrip(&newReq)
-}
-
-// Return a http.Client to be used to query distant APIs
-func (t Token) Client() *http.Client {
-	return &http.Client{
-		Transport: NewTokenTranport(t),
-	}
 }
 
 // Parse the configuration and build the list of providers, return an Authy instance
@@ -137,22 +77,22 @@ func (a Authy) Authorize(providerName string, session Session, r *http.Request) 
 
 // Check the CSRF token then query the distant provider for an access token using the code that was provided by the
 // authorization API
-func (a Authy) Access(providerName string, session Session, r *http.Request) (Token, string, error) {
+func (a Authy) Access(providerName string, session Session, r *http.Request) (*Token, string, error) {
 	providerConfig, ok := a.providers[providerName]
 	if ok != true {
-		return Token{}, "", errors.New(fmt.Sprintf("unknown provider %s", providerName))
+		return nil, "", errors.New(fmt.Sprintf("unknown provider %s", providerName))
 	}
 
 	if providerConfig.Provider.OAuth == 2 {
 		// check the state parameter against CSRF
 		state := session.Get("authy." + providerName + ".state")
 		if state == nil {
-			return Token{}, "", errors.New("state token is not set in session, possible CSRF")
+			return nil, "", errors.New("state token is not set in session, possible CSRF")
 		}
 
 		stateParam := r.URL.Query().Get("state")
 		if stateParam != state.(string) {
-			return Token{}, "", errors.New("invalid state param provided, possible CSRF")
+			return nil, "", errors.New("invalid state param provided, possible CSRF")
 		}
 
 		// retrieve the original scope
@@ -160,13 +100,13 @@ func (a Authy) Access(providerName string, session Session, r *http.Request) (To
 
 		code := r.URL.Query().Get("code")
 		if code == "" {
-			return Token{}, "", errors.New("code was not found in the query parameters")
+			return nil, "", errors.New("code was not found in the query parameters")
 		}
 
 		// retrieve access token from provider
 		token, err := oauth2.GetAccessToken(providerConfig, r)
 		if err != nil {
-			return Token{}, "", err
+			return nil, "", err
 		}
 
 		// we don't need session info anymore
@@ -184,11 +124,8 @@ func (a Authy) Access(providerName string, session Session, r *http.Request) (To
 		}
 
 		// return the token
-		return Token{
-			Value: token.AccessToken,
-			Scope: token.Scope,
-		}, redirectUrl, nil
+		return tokenFromOAuth2(a, providerName, token), redirectUrl, nil
 	}
 
-	return Token{}, "", errors.New("Not Implemented")
+	return nil, "", errors.New("Not Implemented")
 }

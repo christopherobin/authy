@@ -1,8 +1,8 @@
 package authy_test
 
 import (
-	"github.com/gophergala/authy"
-	"github.com/gophergala/authy/provider"
+	"github.com/christopherobin/authy"
+	"github.com/christopherobin/authy/provider"
 	. "github.com/smartystreets/goconvey/convey"
 	"net/url"
 	"testing"
@@ -44,7 +44,7 @@ func TestAuthy(t *testing.T) {
 		}
 
 		// and a fake oauth
-		server := FakeOAuthServer()
+		server := MockOAuthServer(t)
 
 		// and even a fake github
 		github, _ := provider.GetProvider("github")
@@ -53,25 +53,25 @@ func TestAuthy(t *testing.T) {
 		provider.RegisterProvider(github)
 
 		Convey("Try to get url for an invalid provider", func() {
-			_, err := a.Authorize("bitbucket", session, FakeHttpRequest("http://localhost:2000/authy/bitbucket"))
+			_, err := a.Authorize("bitbucket", session, MockHttpRequest("http://localhost:2000/authy/bitbucket"))
 			So(err, ShouldNotEqual, nil)
 		})
 
-		Convey("Get authorization url for GitHub", func() {
-			_, err := a.Authorize("github", session, FakeHttpRequest("http://localhost:2000/authy/github"))
+		Convey("Get access token from an invalid provider", func() {
+			_, _, err := a.Access("someone", session, MockHttpRequest("http://localhost:2000/"))
+			So(err, ShouldNotEqual, nil)
+		})
+
+		Convey("Get authorization url for provider", func() {
+			_, err := a.Authorize("github", session, MockHttpRequest("http://localhost:2000/authy/github"))
 			So(err, ShouldEqual, nil)
 
-			Convey("Get access token from an invalid provider", func() {
-				_, _, err := a.Access("someone", session, FakeHttpRequest("http://localhost:2000/"))
-				So(err, ShouldNotEqual, nil)
-			})
-
-			Convey("Get access token from GitHub", func() {
-				_, _, err := a.Access("github", session, FakeHttpRequest("http://localhost:2000/authy/github/callback?code=foo&state="+url.QueryEscape(session.Get("authy.github.state").(string))))
+			Convey("Get access token from provider", func() {
+				_, _, err := a.Access("github", session, MockHttpRequest("http://localhost:2000/authy/github/callback?code=auth_test&state="+url.QueryEscape(session.Get("authy.github.state").(string))))
 				So(err, ShouldEqual, nil)
 
 				Convey("State was deleted so second call should fail", func() {
-					_, _, err := a.Access("github", session, FakeHttpRequest("http://localhost:2000/"))
+					_, _, err := a.Access("github", session, MockHttpRequest("http://localhost:2000/"))
 					So(err, ShouldNotEqual, nil)
 					server.Close()
 				})

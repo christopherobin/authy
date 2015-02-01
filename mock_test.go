@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"testing"
 )
 
 // a fake session object
@@ -25,7 +26,7 @@ func (f *FakeSession) Delete(key interface{}) {
 }
 
 // generate a fake http request
-func FakeHttpRequest(requestUrl string) *http.Request {
+func MockHttpRequest(requestUrl string) *http.Request {
 	parsedUrl, _ := url.Parse(requestUrl)
 	return &http.Request{
 		URL: parsedUrl,
@@ -33,14 +34,16 @@ func FakeHttpRequest(requestUrl string) *http.Request {
 }
 
 // fake oauth2 service
-func FakeOAuthServer() (s *httptest.Server) {
+func MockOAuthServer(t *testing.T) (s *httptest.Server) {
 	r := mux.NewRouter()
 
 	r.HandleFunc("/oauth2", func(rw http.ResponseWriter, r *http.Request) {
 		values := url.Values{}
+
 		values.Set("access_token", "fakeaccesstoken")
 		values.Set("scope", r.URL.Query().Get("scope"))
 		values.Set("token_type", "example")
+
 		rw.Write([]byte(values.Encode()))
 	})
 
